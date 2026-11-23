@@ -1,6 +1,6 @@
 {
 	"name": "photo-editor-bridge",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "Claude Code (MCP) とブラウザの写真エディタを、このPCの中だけでつなぐブリッジ",
 	"type": "module",
 	"license": "MIT",

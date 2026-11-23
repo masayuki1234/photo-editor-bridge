@@ -1,5 +1,12 @@
 // 最小のMCPサーバー(標準入出力・JSON-RPC 2.0)。initialize / ping / tools/list / tools/call だけを扱う。
 // ツールの中身は知らない。呼び出しは callTool に任せる。
+/**
+ * Claude Code のチャンネル(研究プレビュー): 起動中の会話へ1通のメッセージを差し込む通知。
+ * meta のキーは英数字とアンダースコアだけ(それ以外は Claude Code に捨てられる)。
+ */
+export function channelNotification(content, meta = {}) {
+    return { jsonrpc: '2.0', method: 'notifications/claude/channel', params: { content, meta } };
+}
 const SUPPORTED_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const isRecord = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
 const reply = (id, result) => ({ jsonrpc: '2.0', id, result });
@@ -22,8 +29,10 @@ export function createMcpHandler(deps) {
                 const version = SUPPORTED_VERSIONS.includes(String(requested)) ? String(requested) : SUPPORTED_VERSIONS[0];
                 return reply(id, {
                     protocolVersion: version,
-                    capabilities: { tools: {} },
-                    serverInfo: deps.serverInfo
+                    // チャンネルは --dangerously-load-development-channels で起動されたときだけ効く。宣言しても通常の起動には影響しない
+                    capabilities: { tools: {}, experimental: { 'claude/channel': {} } },
+                    serverInfo: deps.serverInfo,
+                    ...(deps.instructions ? { instructions: deps.instructions } : {})
                 });
             }
             case 'ping':

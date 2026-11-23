@@ -3,10 +3,10 @@
 // 標準出力はMCPの通信専用。ログは標準エラーへ出す。
 import { createInterface } from 'node:readline';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { Bridge, type PageLink } from './bridge-core.ts';
-import { createMcpHandler, type ToolOutput } from './mcp.ts';
+import { Bridge, MAX_CHAT_LENGTH, type PageLink } from './bridge-core.ts';
+import { channelNotification, createMcpHandler, type ToolOutput } from './mcp.ts';
 import { PairingGuard, isAllowedOrigin } from './pairing.ts';
-import { CONNECTION_INFO_TOOL, EDITOR_TOOLS } from './tool-defs.ts';
+import { CHANNEL_INSTRUCTIONS, CHAT_REPLY_TOOL, CONNECTION_INFO_TOOL, EDITOR_TOOLS } from './tool-defs.ts';
 
 const PORT = Number(process.env.PHOTO_EDITOR_BRIDGE_PORT ?? 47821);
 const EXTRA_ORIGINS = (process.env.PHOTO_EDITOR_ORIGINS ?? '')
@@ -17,7 +17,12 @@ const CLOSE_POLICY = 1008;
 
 const log = (text: string) => process.stderr.write(`[photo-editor-bridge] ${text}\n`);
 
+// 標準出力はMCPの通信専用。1行1メッセージで書く
+const writeMessage = (message: object) => process.stdout.write(`${JSON.stringify(message)}\n`);
+
 const bridge = new Bridge();
+// エディタの会話欄からの発言を、Claude Code の会話へ差し込む(チャンネル)
+bridge.onChat((text) => writeMessage(channelNotification(text, { chat_id: 'editor' })));
 const pairing = new PairingGuard();
 
 // 127.0.0.1 だけで待ち受ける(ほかの機器からは届かない)
@@ -67,13 +72,23 @@ async function callTool(name: string, args: unknown): Promise<ToolOutput> {
 			})
 		};
 	}
+	if (name === CHAT_REPLY_TOOL.name) {
+		const text = typeof args === 'object' && args !== null ? (args as { text?: unknown }).text : undefined;
+		if (typeof text !== 'string' || text.trim() === '' || text.length > MAX_CHAT_LENGTH) {
+			return { text: `text must be a non-empty string of up to ${MAX_CHAT_LENGTH} characters.`, isError: true };
+		}
+		return bridge.sendChatReply(text)
+			? { text: 'sent' }
+			: { text: 'The editor is not connected, so the reply was not delivered.', isError: true };
+	}
 	const result = await bridge.call(name, args);
 	return result.ok ? { text: asText(result.result) } : { text: asText(result.error), isError: true };
 }
 
 const handle = createMcpHandler({
 	serverInfo: { name: 'photo-editor', version: '0.0.1' },
-	tools: [CONNECTION_INFO_TOOL, ...EDITOR_TOOLS],
+	tools: [CONNECTION_INFO_TOOL, CHAT_REPLY_TOOL, ...EDITOR_TOOLS],
+	instructions: CHANNEL_INSTRUCTIONS,
 	callTool
 });
 
@@ -85,11 +100,11 @@ lines.on('line', (line) => {
 		try {
 			message = JSON.parse(line);
 		} catch {
-			process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } })}\n`);
+			writeMessage({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
 			return;
 		}
 		const response = await handle(message);
-		if (response) process.stdout.write(`${JSON.stringify(response)}\n`);
+		if (response) writeMessage(response);
 	})();
 });
 // Claude Code が終了(標準入力が閉じる)したら、ブリッジも終える

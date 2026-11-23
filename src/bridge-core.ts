@@ -6,6 +6,9 @@ export interface PageLink {
 	close(): void;
 }
 
+/** 会話欄から届く1通の長さの上限(信頼境界での検証)。アプリ側の上限と同じ値にする。 */
+export const MAX_CHAT_LENGTH = 4000;
+
 export type CallError = { code: string; message: string };
 export type CallResult = { ok: true; result: unknown } | { ok: false; error: CallError };
 
@@ -18,6 +21,7 @@ const NOT_CONNECTED: CallError = {
 export class Bridge {
 	#page: PageLink | undefined;
 	#nextId = 1;
+	#onChat: ((text: string) => void) | undefined;
 	readonly #pending = new Map<number, { resolve: (r: CallResult) => void; timer: ReturnType<typeof setTimeout> }>();
 
 	readonly #timeoutMs: number;
@@ -28,6 +32,23 @@ export class Bridge {
 
 	get connected(): boolean {
 		return this.#page !== undefined;
+	}
+
+	/** エディタの会話欄から届いた発言の受け取り先を決める。 */
+	onChat(listener: (text: string) => void): void {
+		this.#onChat = listener;
+	}
+
+	/** Claude の返事を会話欄へ送る。エディタが接続していなければ false。 */
+	sendChatReply(text: string): boolean {
+		const page = this.#page;
+		if (!page) return false;
+		try {
+			page.send(JSON.stringify({ type: 'chat-reply', text }));
+			return true;
+		} catch {
+			return false;
+		}
 	}
 
 	/** 新しい接続を受け入れる。すでに接続があれば、古い方を閉じて置き換える(ページの再読み込み用)。 */
@@ -56,7 +77,13 @@ export class Bridge {
 			return;
 		}
 		if (typeof message !== 'object' || message === null) return;
-		const { id, ok, result, error } = message as Record<string, unknown>;
+		const { id, ok, result, error, type, text: chatText } = message as Record<string, unknown>;
+		if (type === 'chat') {
+			if (typeof chatText === 'string' && chatText.trim() !== '' && chatText.length <= MAX_CHAT_LENGTH) {
+				this.#onChat?.(chatText);
+			}
+			return;
+		}
 		if (typeof id !== 'number') return;
 		const waiting = this.#pending.get(id);
 		if (!waiting) return;

@@ -1,4 +1,17 @@
 const noArgs = { type: 'object', properties: {}, additionalProperties: false };
+/** エディタの会話欄へ返事を送るツール。エディタへ転送する命令ではなく、ブリッジが自分で処理する。 */
+export const CHAT_REPLY_TOOL = {
+    name: 'reply',
+    description: "Send a text reply to the user's chat panel inside the photo editor. Use it to answer messages that arrive as <channel source=\"photo-editor\"> events: the user reads the editor panel, not your terminal output.",
+    inputSchema: {
+        type: 'object',
+        properties: { text: { type: 'string', description: 'The reply text (plain text, up to 4000 characters).' } },
+        required: ['text'],
+        additionalProperties: false
+    }
+};
+/** Claude に最初に渡す説明。 */
+export const CHANNEL_INSTRUCTIONS = 'Messages from the editor chat panel arrive as <channel source="photo-editor"> events. The user cannot see your terminal, so answer with the reply tool. Use get_state / get_stats to look at the current edit (numbers and brightness statistics only; image pixels are never available) and set_params / apply_preset / undo to change it. Keep replies short.';
 /** エディタへそのまま転送する命令。名前は remote-control.ts の命令名と同じ。 */
 export const EDITOR_TOOLS = [
     {

@@ -13,7 +13,17 @@ export type McpDeps = {
 	serverInfo: { name: string; version: string };
 	tools: readonly ToolDef[];
 	callTool: (name: string, args: unknown) => Promise<ToolOutput>;
+	/** Claude に最初に渡す説明(チャンネルの使い方など)。 */
+	instructions?: string;
 };
+
+/**
+ * Claude Code のチャンネル(研究プレビュー): 起動中の会話へ1通のメッセージを差し込む通知。
+ * meta のキーは英数字とアンダースコアだけ(それ以外は Claude Code に捨てられる)。
+ */
+export function channelNotification(content: string, meta: Record<string, string> = {}): object {
+	return { jsonrpc: '2.0', method: 'notifications/claude/channel', params: { content, meta } };
+}
 
 const SUPPORTED_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
@@ -41,8 +51,10 @@ export function createMcpHandler(deps: McpDeps) {
 				const version = SUPPORTED_VERSIONS.includes(String(requested)) ? String(requested) : SUPPORTED_VERSIONS[0];
 				return reply(id, {
 					protocolVersion: version,
-					capabilities: { tools: {} },
-					serverInfo: deps.serverInfo
+					// チャンネルは --dangerously-load-development-channels で起動されたときだけ効く。宣言しても通常の起動には影響しない
+					capabilities: { tools: {}, experimental: { 'claude/channel': {} } },
+					serverInfo: deps.serverInfo,
+					...(deps.instructions ? { instructions: deps.instructions } : {})
 				});
 			}
 			case 'ping':

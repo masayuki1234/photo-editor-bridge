@@ -1,5 +1,7 @@
 // ブリッジの中核: エディタ(ブラウザ)との1本の接続と、Claude Code からの呼び出しを結ぶ。
 // 通信の実体(WebSocket)は知らない。送る・閉じるだけの口(PageLink)を受け取る。
+/** 会話欄から届く1通の長さの上限(信頼境界での検証)。アプリ側の上限と同じ値にする。 */
+export const MAX_CHAT_LENGTH = 4000;
 const NOT_CONNECTED = {
     code: 'not-connected',
     message: 'The editor is not connected. Ask the user to open the app, press "Claude Code と接続", and enter the pairing code from connection_info.'
@@ -7,6 +9,7 @@ const NOT_CONNECTED = {
 export class Bridge {
     #page;
     #nextId = 1;
+    #onChat;
     #pending = new Map();
     #timeoutMs;
     constructor(timeoutMs = 10_000) {
@@ -14,6 +17,23 @@ export class Bridge {
     }
     get connected() {
         return this.#page !== undefined;
+    }
+    /** エディタの会話欄から届いた発言の受け取り先を決める。 */
+    onChat(listener) {
+        this.#onChat = listener;
+    }
+    /** Claude の返事を会話欄へ送る。エディタが接続していなければ false。 */
+    sendChatReply(text) {
+        const page = this.#page;
+        if (!page)
+            return false;
+        try {
+            page.send(JSON.stringify({ type: 'chat-reply', text }));
+            return true;
+        }
+        catch {
+            return false;
+        }
     }
     /** 新しい接続を受け入れる。すでに接続があれば、古い方を閉じて置き換える(ページの再読み込み用)。 */
     attach(page) {
@@ -43,7 +63,13 @@ export class Bridge {
         }
         if (typeof message !== 'object' || message === null)
             return;
-        const { id, ok, result, error } = message;
+        const { id, ok, result, error, type, text: chatText } = message;
+        if (type === 'chat') {
+            if (typeof chatText === 'string' && chatText.trim() !== '' && chatText.length <= MAX_CHAT_LENGTH) {
+                this.#onChat?.(chatText);
+            }
+            return;
+        }
         if (typeof id !== 'number')
             return;
         const waiting = this.#pending.get(id);
