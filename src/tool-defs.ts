@@ -18,20 +18,26 @@ export const CHAT_REPLY_TOOL: ToolDef = {
 
 /** Claude に最初に渡す説明。 */
 export const CHANNEL_INSTRUCTIONS =
-	'Messages from the editor chat panel arrive as <channel source="photo-editor"> events. The user cannot see your terminal, so answer with the reply tool. Use get_state / get_stats to look at the current edit (numbers and brightness statistics only; image pixels are never available) and set_params / apply_preset / undo to change it. Keep replies short.';
+	'Messages from the editor chat panel arrive as <channel source="photo-editor"> events. The user cannot see your terminal, so answer with the reply tool. Use get_state / get_stats / get_brightness_map to look at the current edit (numbers, brightness/color statistics and a coarse 8x8 brightness map only; image pixels are never available) and set_params / apply_preset / undo to change it. Keep replies short.';
 
 /** エディタへそのまま転送する命令。名前は remote-control.ts の命令名と同じ。 */
 export const EDITOR_TOOLS: readonly ToolDef[] = [
 	{
 		name: 'get_state',
 		description:
-			'Get the editor state: open tabs, the active image\'s current edit parameters, history position, the list of parameters with their ranges (paramSpecs) and the presets. Units: exposure is in EV (-5..5); other params are normalized (-1..1, or 0..1 for sharpness/noiseReduction/grain). 0 is neutral. Params with rendered=false have no visible effect yet.',
+			'Get the editor state: open tabs, the active image\'s current edit parameters, its size (width, height, orientation) and file type, history position, the list of parameters with their ranges (paramSpecs) and the presets. Units: exposure is in EV (-5..5); other params are normalized (-1..1, or 0..1 for sharpness/noiseReduction/grain). 0 is neutral. Params with rendered=false have no visible effect yet.',
 		inputSchema: noArgs
 	},
 	{
 		name: 'get_stats',
 		description:
-			'Get brightness statistics of the active image as currently shown (after edits): per-channel means, luma mean and percentiles (0..255), and the share of crushed shadows / blown highlights (0..1). The image pixels are never available; use these numbers to judge the photo.',
+			'Get statistics of the active image as currently shown (after edits): per-channel means and percentiles (0..255), luma mean and percentiles, the share of crushed shadows / blown highlights (0..1; overall and per channel, to see which channel clips first), and saturation mean and percentiles (0..1). The image pixels are never available; use these numbers to judge the photo.',
+		inputSchema: noArgs
+	},
+	{
+		name: 'get_brightness_map',
+		description:
+			'Get a coarse 8x8 map of the active image as currently shown (after edits): the average brightness (0..255) and average color (#rrggbb) of each cell (rows top to bottom, columns left to right), plus the center and edge brightness and their difference. Use it to judge where the image is dark or bright (for example a bright sky or a dark foreground). The resolution is fixed and the image pixels are never available.',
 		inputSchema: noArgs
 	},
 	{
